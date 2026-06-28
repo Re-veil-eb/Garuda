@@ -1,8 +1,14 @@
+# Competition dataset
+candidates.jsonl
+
+# Generated outputs
+*.csv
+
+# Sample datasets
+sample_candidates.json
+sample_candidates.jsonl
+tests/edge_case_candidates.jsonl
+
+# Python
 __pycache__/
 *.pyc
-.ipynb_checkpoints/
-.env
-.vscode/
-.idea/
-*.josn
-*.jsonl

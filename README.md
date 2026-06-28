@@ -2,64 +2,60 @@
 
 ## Overview
 
-Garuda is a production-oriented resume ranking system developed for the **Redrob Resume Ranking Hackathon**. The system ranks candidates against a given Job Description using an interpretable, deterministic, CPU-only scoring pipeline designed to satisfy real-world recruitment constraints.
+Garuda is a production-oriented resume ranking system developed for the **Redrob Resume Ranking Hackathon**.
 
-Unlike approaches that rely on hosted Large Language Models or GPU inference, Garuda performs ranking entirely offline using engineered features extracted from candidate profiles. This makes the system scalable, reproducible, explainable, and suitable for large candidate pools.
+The system ranks candidate resumes against a target Job Description using a deterministic, explainable, CPU-only scoring pipeline designed for large-scale recruitment workflows.
 
-The final output is a ranked list of the **Top 100 candidates** together with human-readable reasoning for every recommendation.
+Unlike approaches that rely on hosted Large Language Models or GPU inference during ranking, Garuda performs candidate evaluation entirely offline using engineered features extracted from structured candidate profiles. This design enables scalable, reproducible, and efficient ranking suitable for production environments.
+
+The final output is a ranked list of the **Top 100 candidates**, accompanied by concise, human-readable reasoning for every recommendation.
 
 ---
 
 # Key Features
 
-* Deterministic ranking
+* Deterministic ranking pipeline
 * CPU-only execution
 * No external API calls
 * No hosted LLM dependency during inference
-* Runtime under competition limits
-* Explainable ranking
+* Explainable candidate ranking
 * Multi-factor candidate evaluation
-* Edge-case testing
-* Submission validation
+* Structured reasoning generation
+* Edge-case testing utilities
+* Submission validation tools
 * Fully reproducible pipeline
 
 ---
 
 # Repository Structure
 
-```
+```text
 Garuda/
 │
+├── .gitignore
 ├── README.md
 ├── LICENSE
-├── .gitignore
-│
-├── rank.py
 ├── DESIGN.md
+├── rank.py
 ├── requirements.txt
 ├── submission_metadata.yaml
-├── submission.csv
-│
-├── sample_candidates.json
-├── sample_candidates.jsonl
 │
 ├── sandbox/
-│   └── ResumeRankingDemo.ipynb
+│   ├── README.md
+│   └── Garuda_Resume_Ranking_Sandbox.ipynb
 │
-├── tests/
-│   ├── generate_edge_cases.py
-│   ├── validate_submission.py
-│   ├── edge_case_candidates.jsonl
-│   └── README.md
-│
-└── docs/
+└── tests/
+    ├── README.md
+    ├── Garuda_Testing_and_Validation.ipynb
+    ├── generate_edge_cases.py
+    └── validate_submission.py
 ```
 
 ---
 
 # System Architecture
 
-```
+```text
 Candidate Dataset
         │
         ▼
@@ -81,7 +77,7 @@ Feature Extraction
 Weighted Scoring Engine
         │
         ▼
-Ranking
+Candidate Ranking
         │
         ▼
 Reasoning Generator
@@ -94,87 +90,73 @@ submission.csv
 
 # Ranking Methodology
 
-Garuda evaluates every candidate using multiple independent signals instead of relying solely on keyword overlap.
+Garuda evaluates each candidate using multiple complementary signals rather than relying solely on keyword matching.
 
-The scoring engine combines:
+The scoring pipeline incorporates:
 
 * Relevant years of experience
 * Current role alignment
 * Career progression
-* Technical skills
-* AI / ML expertise
-* Project relevance
-* Education
+* Technical skill relevance
+* AI/ML experience
+* Project and work-history relevance
+* Educational background
 * Recruiter engagement signals
 * Profile completeness
 * Notice period
 * Work preferences
-* Hiring signals
-* Consistency validation
+* Candidate consistency signals
 
 Each feature contributes to a normalized weighted score.
 
-The final score is deterministic and reproducible.
-
----
-
-# Anti-Gaming Measures
-
-The ranking pipeline includes safeguards against common manipulation techniques including:
-
-* Keyword stuffing
-* Inflated skill lists
-* Suspicious experience timelines
-* Inconsistent profiles
-* Unrealistic expertise claims
-* Low-quality profile signals
-
-These checks help naturally reduce the ranking of synthetic or honeypot candidates.
+The final ranking is deterministic and reproducible.
 
 ---
 
 # Explainability
 
-Every ranked candidate receives an automatically generated explanation based on factual information extracted from the profile.
+Each ranked candidate is accompanied by automatically generated reasoning based entirely on factual information contained within the candidate profile.
 
-The reasoning includes:
+Reasoning may reference:
 
-* Years of experience
-* Relevant technologies
-* Domain alignment
+* Relevant experience
+* Technical skills
+* Current role
 * Career strengths
-* Recruiter signals
-* Potential concerns (when applicable)
+* Recruiter engagement signals
+* Potential hiring considerations
 
-No hallucinated information is introduced.
+No unsupported or fabricated information is introduced during reasoning generation.
 
 ---
 
 # Performance
 
-Measured on the official dataset.
+Measured using the official competition dataset.
 
-| Metric     |                     Value |
-| ---------- | ------------------------: |
-| Candidates |                   100,000 |
-| Runtime    |               ~40 seconds |
-| Compute    |                       CPU |
-| GPU        |              Not Required |
-| Network    |                  Disabled |
-| Output     | Top 100 Ranked Candidates |
+| Metric        | Value                     |
+| ------------- | ------------------------- |
+| Dataset Size  | 100,000 Candidates        |
+| Loading Time  | ~7.9 seconds                |
+| Ranking Time  | ~60.5 seconds               |
+| Total Runtime | ~68.8 seconds               |
+| Compute       | CPU Only                  |
+| GPU           | Not Required              |
+| Network       | Disabled                  |
+| Output        | Top 100 Ranked Candidates |
 
 ---
 
 # Installation
 
-Clone the repository.
+Clone the repository:
 
 ```bash
 git clone https://github.com/Re-veil-eb/Garuda.git
 cd Garuda
 ```
 
-Install dependencies.
+Install the required dependencies:
 
 ```bash
 pip install -r requirements.txt
@@ -184,7 +166,7 @@ pip install -r requirements.txt
 
 # Running the Ranker
 
-Place the official `candidates.jsonl` file in the repository root.
+Place the official `candidates.jsonl` dataset in the repository root.
 
 Execute:
 
@@ -196,15 +178,15 @@ python rank.py \
 
 The generated CSV follows the competition specification:
 
-```
+```text
 candidate_id,rank,score,reasoning
 ```
 
 ---
 
-# Validation
+# Submission Validation
 
-Run the official validator.
+Validate the generated submission:
 
 ```bash
 python tests/validate_submission.py submission.csv
@@ -212,7 +194,7 @@ python tests/validate_submission.py submission.csv
 
 Expected output:
 
-```
+```text
 Submission is valid.
 ```
 
@@ -220,13 +202,13 @@ Submission is valid.
 
 # Edge Case Testing
 
-Generate adversarial candidate profiles.
+Generate synthetic edge-case profiles:
 
 ```bash
 python tests/generate_edge_cases.py
 ```
 
-Evaluate them using:
+Evaluate the generated dataset:
 
 ```bash
 python rank.py \
@@ -234,54 +216,92 @@ python rank.py \
     --out edge_case_submission.csv
 ```
 
----
-
-# Sample Execution
-
-For quick testing without the full dataset:
+Validate the generated submission:
 
 ```bash
-python rank.py \
-    --candidates sample_candidates.jsonl \
-    --out sample_submission.csv
+python tests/validate_submission.py edge_case_submission.csv
 ```
+
+---
+
+# Sandbox
+
+The repository includes a Google Colab notebook demonstrating end-to-end execution on a lightweight sample dataset.
+
+The sandbox demonstrates:
+
+* Environment setup
+* Dependency installation
+* Ranking execution
+* Submission generation
+* Output validation
+
+---
+
+# Testing
+
+The repository includes automated testing utilities for local verification.
+
+Included tools:
+
+* Submission validator
+* Edge-case dataset generator
+* End-to-end testing notebook
+
+These utilities help verify correctness before submission.
 
 ---
 
 # Reproducibility
 
-The ranking process is completely deterministic.
+Garuda is fully deterministic.
 
-Given identical input data, the generated submission will always be identical.
+Given identical input data, the generated ranking will always be identical.
 
-No randomness is used during inference.
+The ranking process:
 
-No external services are contacted.
+* Uses no randomness
+* Makes no external network requests
+* Produces deterministic scores
+* Generates reproducible output
 
 ---
 
-# Competition Constraints
+# Competition Constraint Compliance
 
-| Constraint      | Status |
-| --------------- | ------ |
-| CPU Only        | ✅      |
-| No GPU          | ✅      |
-| No Network      | ✅      |
-| Runtime < 5 min | ✅      |
-| Memory < 16 GB  | ✅      |
-| Reproducible    | ✅      |
+| Constraint              | Status |
+| ----------------------- | ------ |
+| CPU Only                | ✅      |
+| No GPU                  | ✅      |
+| No External APIs        | ✅      |
+| Runtime < 5 Minutes     | ✅      |
+| Memory < 16 GB          | ✅      |
+| Deterministic Execution | ✅      |
+| Reproducible Pipeline   | ✅      |
+
+---
+
+# Documentation
+
+Additional project documentation is provided in:
+
+* **DESIGN.md** – Methodology, feature engineering, scoring strategy, and design decisions.
+* **tests/** – Validation scripts and testing utilities.
+* **sandbox/** – Google Colab notebook for reproducible execution.
 
 ---
 
 # AI Usage
 
-AI-assisted development tools were used during implementation for design discussions, code review, documentation, and iterative refinement.
+AI-assisted development tools were used during design discussions, documentation, code review, and iterative refinement.
 
-The ranking pipeline itself performs no external AI inference during execution and complies fully with the competition's compute constraints.
+The ranking pipeline itself performs **no external AI inference** during execution and fully complies with the competition's compute constraints.
 
 ---
 
 # Future Improvements
+
+Potential enhancements include:
 
 * Learning-to-Rank models
 * Adaptive feature weighting
@@ -289,7 +309,7 @@ The ranking pipeline itself performs no external AI inference during execution a
 * Graph-based career trajectory modeling
 * Recruiter feedback integration
 * Fairness-aware ranking
-* Calibration using hiring outcomes
+* Score calibration using hiring outcomes
 
 ---
 
@@ -299,8 +319,8 @@ This project is released under the MIT License.
 
 ---
 
-# Author
+# Acknowledgements
 
 Developed as part of the **Redrob Resume Ranking Hackathon**.
 
-All ranking logic, feature engineering, testing, and evaluation pipeline are fully reproducible from the source code contained in this repository.
+The repository contains the complete source code required to reproduce the ranking pipeline. All feature engineering, ranking logic, testing, validation, and documentation are included to support transparent and reproducible evaluation.
