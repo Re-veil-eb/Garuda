@@ -1,0 +1,108 @@
+# Redrob Hackathon — Submission Metadata Template
+#
+# Copy this file to your repo root as `submission_metadata.yaml` and fill it in.
+# The fields here should match what you submit via the portal at upload time.
+# Stage 3 review uses this file to verify your portal metadata.
+
+# ============================================================================
+# Team identity
+# ============================================================================
+team_name: "Garuda"  # Used in leaderboard and announcements
+
+primary_contact:
+  name: "Yuvaraju Basa"
+  email: "yuvarajubasa004@gmail.com"   # Used for all organizer communication
+  phone: "+91-8886735882"              # Used for top-50 / top-10 outreach
+
+team_members:
+  - name: "Yuvaraju Basa"
+    email: "yuvarajubasa004@gmail.com"
+    role: "ML Engineer, Team Lead, Feature Extraction"
+  - name: "Sairaj Basa"
+    email: "basasairaj025@gmail.com"
+    role: "SRE Engineer, CICD, Github"
+  - name: "Harinath Vemula"
+    email: "harinathvemula18@gmail.com"
+    role: "Presentation Prep, Data Prep"
+
+# ============================================================================
+# Code and reproducibility
+# ============================================================================
+github_repo: "https://github.com/Re-veil-eb/Garuda"
+# Required. Must be reachable. Private repos OK if you can grant organizer
+# access at Stage 3 (the email to add will be communicated then).
+
+sandbox_link: "https://colab.research.google.com/drive/1z70zTKeZDmutz9Ob_VMxwkPad42S_guK?usp=sharing"
+# Required. A working hosted environment where the ranker can be run on a small
+# candidate sample. See Section 10.5 of submission_spec.md for acceptable
+# platforms (HuggingFace Spaces, Streamlit Cloud, Replit, Colab, Docker, Binder).
+
+reproduce_command: "python rank.py --candidates ./candidates.jsonl --out ./submission.csv"
+# The single command that produces submission.csv from candidates.jsonl.
+# Should run end-to-end within 5 minutes on CPU with 16GB RAM and no network.
+
+# ============================================================================
+# Compute environment
+# ============================================================================
+compute:
+  platform: "Google Colab"
+  cpu_cores: 2
+  ram_gb: 13
+  python_version: "3.12.13"
+  os: "Linux-6.6.122+-x86_64-with-glibc2.35"
+  uses_gpu_for_inference: false       # CPU-only ranking pipeline
+  has_network_during_ranking: false   # No API calls; TF-IDF uses no external weights
+  pre_computation_required: false     # All scoring is done inline at ranking time
+  pre_computation_time_minutes: 0
+
+# ============================================================================
+# AI tools declaration
+# ============================================================================
+# Transparency only — declared use is NOT penalized. Be honest. Stage 5 interview
+# may verify these declarations against your code; declarations that contradict
+# your code or your interview are flagged.
+ai_tools_used:
+  - "Claude"          # Architecture discussion, ideology, code review, bug identification
+  - "GitHub Copilot"  # File structure and boilerplate
+
+ai_usage_summary: |
+  Used Claude for architectural discussion, scoring ideology (weight design,
+  honeypot heuristics, disqualifier logic), and iterative code review across
+  multiple versions of rank.py. Claude was used as a reasoning partner —
+  no candidate data was fed to any LLM at any point.
+  Used GitHub Copilot for file structure and boilerplate autocomplete.
+  All scoring logic, weight decisions, and design choices are original team work.
+
+# ============================================================================
+# Approach summary (optional but recommended)
+# ============================================================================
+methodology_summary: |
+  Rule-based ranker with five weighted sub-scores and explicit per-candidate
+  reasoning capture. Positive sub-scores: role_fit (0.30) — evaluates YOE band
+  fit, applied-ML-at-product-company tenure fraction, and current title match;
+  skill_fit (0.25) — matches candidate skills against a JD-derived required and
+  nice-to-have skill lexicon weighted by proficiency level, with a career
+  corroboration discount that penalises keyword-stuffed profiles whose role
+  history shows no ML/AI-adjacent titles; semantic_fit (0.15) — TF-IDF cosine
+  similarity between a candidate document (headline, summary, recent roles,
+  skills) and the JD text, min-max normalised across the candidate pool;
+  availability (0.10) — composite of recency, open-to-work flag, recruiter
+  response rate, notice period, location fit, and interview completion rate.
+  Positive weights sum to 0.80 deliberately, leaving 0.20 headroom for penalty
+  deductions. Deductions: a disqualifier penalty (up to 0.35 scaled) fires on
+  consulting-only careers, pure-research profiles, CV/robotics-only skill sets
+  with no NLP/IR overlap, and recent-AI-buzzword-only histories; a fixed 0.90
+  honeypot penalty fires when two or more structural anomaly flags are detected
+  (e.g. expert skills with near-zero duration, implausibly uniform assessment
+  scores, fully-complete profile active same day as signup). Final score is
+  floored at 0. Runtime is well under 5 minutes for 100k candidates on CPU.
+
+# ============================================================================
+# Declarations
+# ============================================================================
+declarations:
+  read_submission_spec: true        # I have read submission_spec.md in full
+  code_is_original_work: true       # My code is my team's original work (using AI as a tool is fine)
+  no_collusion: true                # I have not coordinated my submission with other teams
+  honeypot_check_done: true         # Explicitly implemented and verified in compute_honeypot_score()
+  reproduction_tested: true         # I have tested that my reproduce_command runs end-to-end

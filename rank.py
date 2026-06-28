@@ -44,13 +44,13 @@ from sklearn.metrics.pairwise import cosine_similarity
 # to use it instead; the code path exists and is isolated in `embed_semantic_fit`.
 # ──────────────────────────────────────────────────────────────────────────
 
-TODAY = date(2026, 6, 20)  # override via --as-of for reproducibility in review
+TODAY = date.today()  # overridden by --as-of for reproducible scoring runs; see main()
 
 # ── JD-derived constants (Section: "Senior AI Engineer — Founding Team") ───
 
 CONSULTING_FIRMS = {
     "tcs", "infosys", "wipro", "accenture", "cognizant", "capgemini",
-    "hcl", "tech mahindra", "mindtree",
+    "hcl", "tech mahindra", "mindtree", "ltimindtree",  # ltimindtree = mindtree post-merger, same entity
 }
 
 ML_TITLE_LEXICON = [
@@ -108,6 +108,13 @@ evaluation, fine-tune vs prompt LLM integration.
 """.strip()
 
 # ── Weights (tunable, intentionally not buried) ────────────────────────────
+# NOTE: the four positive weights below sum to 0.80, not 1.0. This is
+# intentional, not a bug: the remaining 0.20 is deliberate headroom so that
+# disq_penalty/honeypot deductions have room to pull a near-perfect candidate
+# down without the arithmetic wrapping or requiring a second normalization
+# pass. There is no missing 5th sub-score. final score is then floored at 0
+# (see compute logic below) rather than clamped to [0,1], since the positive
+# terms alone can never exceed 0.80 -- an upper clamp would be a no-op.
 W_ROLE_FIT = 0.30
 W_SKILL_FIT = 0.25
 W_SEMANTIC_FIT = 0.15
@@ -153,11 +160,20 @@ def safe_num(d: dict, key: str, default):
 
 
 def parse_date(s):
+    """Returns a date or None. Stays silent when s is empty/None -- a missing
+    date is expected and common in this dataset, not an error. Logs a one-line
+    warning to stderr when s is non-empty but fails to parse, since THAT case
+    is a real data-quality problem that otherwise fails silently: the caller
+    just sees None and the candidate's availability/recency score quietly
+    drops, with no trace of why. This does not raise or abort -- ranking 100k
+    candidates should not crash on one bad date -- it just makes the failure
+    visible in the run log instead of invisible."""
     if not s:
         return None
     try:
         return datetime.strptime(s, "%Y-%m-%d").date()
     except (ValueError, TypeError):
+        print(f"WARNING: could not parse date {s!r}, treating as missing", file=sys.stderr)
         return None
 
 
@@ -175,15 +191,25 @@ def is_ml_title(title: str) -> bool:
     return any(kw in t for kw in ML_TITLE_LEXICON)
 
 
-def is_product_company_role(role: dict) -> bool:
-    """True only on positive evidence of a product company. Consulting firms are
-    excluded explicitly; everything else ambiguous (manufacturing, paper products,
-    generic 'IT Services' with no product hint) is NOT credited as product-company
-    just by elimination — the JD's bar is specific, not 'anything but consulting'."""
+def product_company_credit(role: dict) -> float:
+    """Returns a credit weight in [0, 1], not a bool. Full credit (1.0) for an
+    industry on PRODUCT_COMPANY_INDUSTRY_HINTS; zero for a known consulting
+    firm (explicit exclusion, JD-stated disqualifier territory); partial
+    credit (0.4) for everything else ambiguous -- e.g. 'Manufacturing' or
+    a real but uncommon product-company industry tag we haven't listed.
+    Zero credit for unknowns was tried first and rejected: it penalized
+    genuine product-company candidates whose industry field just didn't
+    match our hint list, which is a false negative, not a safety feature
+    (unlike the consulting-firm exclusion, which is a real JD disqualifier).
+    Partial credit keeps that risk bounded without reopening the original
+    issue this function was tightened to fix (crediting consulting-adjacent
+    ambiguous roles as if they were confirmed product-company experience)."""
     industry = safe_lower(role.get("industry", ""))
     if is_consulting_firm(role.get("company", "")):
-        return False
-    return any(hint in industry for hint in PRODUCT_COMPANY_INDUSTRY_HINTS)
+        return 0.0
+    if any(hint in industry for hint in PRODUCT_COMPANY_INDUSTRY_HINTS):
+        return 1.0
+    return 0.4  # UNKNOWN_INDUSTRY_PARTIAL_CREDIT
 
 
 def location_is_jd_preferred(location: str) -> bool:
@@ -207,12 +233,15 @@ def compute_role_fit(candidate: dict) -> tuple[float, dict]:
     else:
         yoe_score = max(0.0, 1.0 - (yoe - 9) * 0.10)
 
-    # Applied-ML-at-product-company tenure (months), as fraction of total career
+    # Applied-ML-at-product-company tenure (months), as fraction of total career.
+    # ml_product_months is now weighted by product_company_credit (a float in
+    # [0,1]), not gated by a boolean -- a role at an ambiguous-industry company
+    # contributes partial months rather than all-or-nothing.
     total_months = sum(r.get("duration_months", 0) or 0 for r in career)
     ml_product_months = sum(
-        r.get("duration_months", 0) or 0
+        (r.get("duration_months", 0) or 0) * product_company_credit(r)
         for r in career
-        if is_ml_title(r.get("title", "")) and is_product_company_role(r)
+        if is_ml_title(r.get("title", ""))
     )
     if total_months > 0:
         ml_fraction = ml_product_months / total_months
@@ -230,7 +259,7 @@ def compute_role_fit(candidate: dict) -> tuple[float, dict]:
     role_fit = 0.35 * yoe_score + 0.40 * tenure_score + 0.25 * title_score
     detail = {
         "yoe": yoe, "yoe_score": round(yoe_score, 3),
-        "ml_product_months": ml_product_months, "total_months": total_months,
+        "ml_product_months": round(ml_product_months), "total_months": total_months,
         "tenure_score": round(tenure_score, 3),
         "title_score": round(title_score, 3),
         "current_title": current_title,
@@ -292,11 +321,20 @@ def compute_skill_fit(candidate: dict) -> tuple[float, dict]:
 
     # assessment score bonus: if Redrob's own assessment backs up a claimed
     # required skill, add a small confirmation bonus (caps contribution so it
-    # can't dominate, since most candidates have empty assessment maps)
+    # can't dominate, since most candidates have empty assessment maps).
+    # Deduplicated by normalized name first: skill_assessment_scores can contain
+    # near-duplicate keys (e.g. "Vector Search" and "vector_search") that would
+    # otherwise each independently match REQUIRED_SKILLS and double the bonus
+    # for what is really the same underlying skill claim.
     assess_bonus = 0.0
+    counted_skill_keys = set()
     for skill_name, score in assess.items():
+        norm_key = re.sub(r"[\s_\-]+", "", safe_lower(skill_name))
+        if norm_key in counted_skill_keys:
+            continue
         if safe_lower(skill_name) in REQUIRED_SKILLS and score >= 60:
             assess_bonus += 0.05
+            counted_skill_keys.add(norm_key)
 
     raw = (required_score / required_total_weight) + min(0.15, nice_score / 10) + min(0.1, assess_bonus)
 
@@ -518,7 +556,15 @@ def build_candidate_document(candidate: dict) -> str:
         profile.get("summary", ""),
         profile.get("current_title", ""),
     ]
-    for r in career[:3]:  # most recent roles carry more signal; cap for speed
+    for r in career[:3]:  # Cap at 3 most recent roles for the semantic_fit document.
+        # Tradeoff: a highly relevant role further back in career_history (e.g.
+        # a 4th-listed job that was actually a senior ML role) is silently
+        # excluded from the TF-IDF text. Accepted deliberately because (a)
+        # semantic_fit is already the lowest-weighted positive sub-score
+        # (0.15) and is explicitly meant to be a minority signal, and (b)
+        # role_fit and skill_fit both scan the FULL career_history list
+        # already, so the same older role still contributes to the score
+        # through those paths -- it's only dropped from this one text blob.
         parts.append(r.get("title", ""))
         parts.append(r.get("description", ""))
     parts.append(" ".join(s.get("name", "") for s in skills))
@@ -542,8 +588,7 @@ def compute_semantic_fit_batch(candidates: list[dict]) -> np.ndarray:
 # ── Reasoning generation ─────────────────────────────────────────────────────
 
 def generate_reasoning(candidate: dict, role_detail: dict, skill_detail: dict,
-                        disq_detail: dict, avail_detail: dict, honeypot_detail: dict,
-                        final_score: float) -> str:
+                        disq_detail: dict, avail_detail: dict, honeypot_detail: dict) -> str:
     profile = candidate.get("profile", {}) or {}
     parts = []
 
@@ -587,6 +632,14 @@ def rank_candidates(candidates: list[dict], use_tfidf: bool = True) -> pd.DataFr
     n = len(candidates)
     rows = []
 
+    # NOTE on --no-embeddings: semantic_fit is forced to 0 for every candidate,
+    # which means W_SEMANTIC_FIT (0.15) of total possible score is dropped, not
+    # redistributed to the other four sub-scores. This is intentional: silently
+    # rebalancing weights based on a CLI flag would make a candidate's score
+    # depend on an invocation detail in a way that's hard to explain later.
+    # With --no-embeddings, every candidate's score is computed on 0.65 of the
+    # normal positive weight budget (0.80 - 0.15), consistently, which is a
+    # simpler thing to defend than a dynamically reweighted formula.
     semantic_scores = compute_semantic_fit_batch(candidates) if use_tfidf else np.zeros(n)
 
     for i, c in enumerate(candidates):
@@ -606,9 +659,16 @@ def rank_candidates(candidates: list[dict], use_tfidf: bool = True) -> pd.DataFr
         )
         if honeypot_score >= HONEYPOT_THRESHOLD:
             score -= HONEYPOT_PENALTY
+        # Floor at 0, not clamp to [0,1]: the positive terms above sum to at
+        # most 0.80 (see weight-gap note), so an upper clamp would never
+        # trigger. A floor is needed because disq_penalty and the honeypot
+        # penalty can otherwise drive a mediocre-but-not-terrible candidate
+        # to a negative number, which still sorts correctly but reads oddly
+        # in submission.csv and in the reasoning text.
+        score = max(0.0, score)
 
         reasoning = generate_reasoning(c, role_detail, skill_detail, disq_detail,
-                                        avail_detail, honeypot_detail, score)
+                                        avail_detail, honeypot_detail)
 
         rows.append({
             "candidate_id": c.get("candidate_id"),
@@ -624,6 +684,7 @@ def rank_candidates(candidates: list[dict], use_tfidf: bool = True) -> pd.DataFr
 
 
 def main():
+    global TODAY
     parser = argparse.ArgumentParser()
     parser.add_argument("--candidates", required=True)
     parser.add_argument("--out", required=True)
@@ -632,7 +693,20 @@ def main():
     parser.add_argument("--top-n", type=int, default=100)
     parser.add_argument("--debug-columns", action="store_true",
                          help="Keep internal _* score columns in a sidecar debug CSV.")
+    parser.add_argument("--as-of", type=str, default=None,
+                         help="Override the 'today' date used for all recency calculations "
+                              "(last_active_days_ago, days_inactive, etc.), format YYYY-MM-DD. "
+                              "Use this for reproducible scoring runs in review/testing -- "
+                              "without it, TODAY defaults to the real current date, which "
+                              "means re-running on a different day changes availability scores.")
     args = parser.parse_args()
+
+    if args.as_of:
+        try:
+            TODAY = datetime.strptime(args.as_of, "%Y-%m-%d").date()
+        except ValueError:
+            print(f"--as-of must be YYYY-MM-DD, got: {args.as_of!r}", file=sys.stderr)
+            sys.exit(1)
 
     t0 = time.time()
     candidates = load_candidates(args.candidates)
